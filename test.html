@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CityCare Hospital — Full System (with Panic)</title>
+
+  <!-- Icons, Leaflet & Chart.js & BlazeFace TFJS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root{
+      --accent:#0b6ef6;
+      --bg:#f6f8fb;
+      --card:#fff;
+      --muted:#6b7280;
+      --danger:#d32f2f;
+    }
+    *{box-sizing:border-box;font-family:Inter,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:#111;display:flex;min-height:100vh;overflow:hidden}
+    header{background:#fff;padding:16px 18px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+    .sidebar{width:260px;background:#fff;border-right:1px solid #e6e9ef;display:flex;flex-direction:column;flex-shrink:0}
+    .sidebar h2{font-size:20px;margin:0;padding:18px;color:var(--accent);font-weight:700}
+    .sidebar a{padding:12px 16px;text-decoration:none;color:#333;border-radius:8px;margin:6px 10px;display:flex;align-items:center;gap:10px;transition:all 0.15s}
+    .sidebar a:hover{background:#f0f6ff;color:var(--accent)}
+    main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+    .container{max-width:1200px;margin:0 auto;padding:20px; width:100%}
+    .card{background:var(--card);padding:18px;border-radius:12px;box-shadow:0 6px 18px rgba(16,24,40,0.03);margin-bottom:18px}
+    .btn{background:var(--accent);color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;cursor:pointer;border:none;transition:all .15s}
+    .btn:hover{opacity:0.95}
+    .muted{color:var(--muted)}
+    .footer{margin-top:20px;padding:18px;color:var(--muted);text-align:center}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+    .dash-card{background:var(--card);border-radius:12px;padding:16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+    .grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:10px}
+    .table{width:100%;border-collapse:collapse;margin-top:12px}
+    .table th,.table td{padding:10px;text-align:left;border-bottom:1px solid #eee}
+    .table th{background:var(--bg);font-weight:600}
+    .table tr:hover{background:#fbfcfe}
+    .form-row{display:flex;gap:12px}
+    .form-row > *{flex:1}
+    .viewer{position:relative;max-width:520px;margin:auto;margin-bottom:10px}
+    .video{width:100%;border-radius:8px;transform:scaleX(-1)}
+    canvas{position:absolute;top:0;left:0;pointer-events:none}
+    #map{width:100%;height:70vh;border-radius:8px}
+    #panicBtn{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--danger);color:#fff;border:none;padding:12px 18px;border-radius:10px;font-size:16px;cursor:pointer}
+    .chat-box{height:320px;overflow:auto;border:1px solid #eee;padding:12px;border-radius:8px;background:#fff}
+    .chat-msg{margin-bottom:8px}
+    .chat-msg.you{ text-align:right }
+    .small-muted{font-size:12px;color:var(--muted)}
+    .controls-row{display:flex;gap:8px;align-items:center}
+    .search-input{padding:8px;border-radius:8px;border:1px solid #ddd;flex:1}
+    @media (max-width:960px){
+      .grid{grid-template-columns:repeat(2,1fr)}
+      .sidebar{width:72px}
+      .sidebar h2{display:none}
+      .sidebar a{justify-content:center;padding:12px}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <h2>CityCare</h2>
+    <a href="#home"><i class="fa fa-house"></i><span class="label"> Home</span></a>
+    <a href="#login" id="lnk-login"><i class="fa fa-right-to-bracket"></i><span class="label"> Login</span></a>
+    <a href="#dashboard" id="lnk-dashboard"><i class="fa fa-chart-pie"></i><span class="label"> Dashboard</span></a>
+    <a href="#patients" id="lnk-patients"><i class="fa fa-users"></i><span class="label"> Patients</span></a>
+    <a href="#appointments" id="lnk-appointments"><i class="fa fa-calendar-check"></i><span class="label"> Appointments</span></a>
+    <a href="#doctors" id="lnk-doctors"><i class="fa fa-user-md"></i><span class="label"> Doctors</span></a>
+    <a href="#reports" id="lnk-reports"><i class="fa fa-file-medical"></i><span class="label"> Reports</span></a>
+    <a href="#chat" id="lnk-chat"><i class="fa fa-comments"></i><span class="label"> Chat</span></a>
+    <a href="#face" id="lnk-face"><i class="fa fa-camera"></i><span class="label"> Face</span></a>
+    <a href="#panic" id="lnk-panic"><i class="fa fa-triangle-exclamation"></i><span class="label"> Panic</span></a>
+    <div style="flex:1"></div>
+    <div style="padding:12px">
+      <div id="userInfo" class="small-muted">Not logged in</div>
+      <div style="margin-top:10px"><button id="logoutBtn" class="btn" style="display:none">Logout</button></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <main>
+    <header>
+      <div style="font-weight:800">CityCare Hospital System</div>
+      <div style="flex:1"></div>
+      <div class="small-muted" id="topClock"></div>
+    </header>
+
+    <div class="container" id="view"></div>
+    <div class="footer">© <span id="year"></span> CityCare Hospital</div>
+  </main>
+
+<script>
+/* ------------------------------------------------------------
+  Merged & completed CityCare demo with Panic (Overpass + Leaflet)
+-------------------------------------------------------------*/
+
+document.getElementById('year').textContent = new Date().getFullYear();
+setInterval(()=>document.getElementById('topClock').textContent = new Date().toLocaleString(), 1000);
+
+/* ------------------- Mock DB ------------------- */
+const db = {
+  patients: [
+    {id:1, name:"Rahul", age:32, gender:"Male", phone:"9990011111"},
+    {id:2, name:"Anita", age:45, gender:"Female", phone:"9990022222"},
+    {id:3, name:"Vikram", age:29, gender:"Male", phone:"9990033333"},
+    {id:4, name:"Priya", age:37, gender:"Female", phone:"9990044444"},
+    {id:5, name:"Suresh", age:50, gender:"Male", phone:"9990055555"}
+  ],
+  doctors: [
+    {id:1, name:"Dr. Asha", speciality:"Cardiology", phone:"8880011111"},
+    {id:2, name:"Dr. Mehta", speciality:"Radiology", phone:"8880022222"},
+    {id:3, name:"Dr. Kapoor", speciality:"Neurology", phone:"8880033333"}
+  ],
+  appointments: [
+    {id:1, patient:"Rahul", doctor:"Dr. Asha", date:"2025-09-20", status:"Confirmed"},
+    {id:2, patient:"Anita", doctor:"Dr. Mehta", date:"2025-09-22", status:"Pending"}
+  ],
+  reports: [
+    {id:1, patientId:1, doctorId:1, diagnosis:"Normal", severity:"Medium", createdAt:"2025-08-01"},
+    {id:2, patientId:2, doctorId:2, diagnosis:"Tumor", severity:"High", createdAt:"2025-08-06"}
+  ],
+  panics: [] // panic alerts stored here
+};
+
+/* ------------------- Users ------------------- */
+const users = [
+  {id:1, name:'Dr. Asha', email:'doctor@test', password:'1234', role:'doctor'},
+  {id:2, name:'Rahul', email:'patient@test', password:'1234', role:'patient'},
+  {id:3, name:'Anita', email:'anita@test', password:'1234', role:'patient'}
+];
+
+/* ------------------- Auth helpers ------------------- */
+function getCurrentUser(){ return JSON.parse(localStorage.getItem('cc_login')||'null'); }
+function isAuthenticated(){ return !!localStorage.getItem('cc_login'); }
+function loginUser(email,pw){
+  const u = users.find(x => x.email === email && x.password === pw);
+  if(u){ localStorage.setItem('cc_login', JSON.stringify(u)); updateUIAfterLogin(); return true; }
+  return false;
+}
+function logout(){
+  localStorage.removeItem('cc_login');
+  updateUIAfterLogin();
+  navigate('#home');
+}
+
+/* ------------------- Sidebar / UI update ------------------- */
+function updateUIAfterLogin(){
+  const u = getCurrentUser();
+  document.getElementById('userInfo').textContent = u ? `${u.name} (${u.role || 'user'})` : 'Not logged in';
+  document.getElementById('logoutBtn').style.display = u ? 'inline-block' : 'none';
+  // show/hide tabs by role
+  document.querySelectorAll('.sidebar a').forEach(a => a.style.display = 'flex'); // default show
+  if(!u){
+    ['#lnk-dashboard','#lnk-patients','#lnk-appointments','#lnk-doctors','#lnk-reports','#lnk-chat','#lnk-face','#lnk-panic'].forEach(sel=>{ document.querySelector(sel).style.display='none'; });
+    document.querySelector('#lnk-login').style.display = 'flex';
+  } else {
+    document.querySelector('#lnk-login').style.display = 'none';
+    if(u.role === 'doctor'){
+      ['#lnk-dashboard','#lnk-patients','#lnk-appointments','#lnk-doctors','#lnk-reports','#lnk-chat','#lnk-face','#lnk-panic'].forEach(sel=>{ document.querySelector(sel).style.display='flex'; });
+    } else {
+      ['#lnk-dashboard','#lnk-appointments','#lnk-chat','#lnk-face','#lnk-panic'].forEach(sel=>{ document.querySelector(sel).style.display='flex'; });
+      ['#lnk-patients','#lnk-doctors','#lnk-reports'].forEach(sel=>{ document.querySelector(sel).style.display='none'; });
+    }
+  }
+}
+
+/* logout button */
+document.getElementById('logoutBtn').addEventListener('click', logout);
+
+/* ------------------- Router ------------------- */
+const view = document.getElementById('view');
+function navigate(h){ window.location.hash = h; render(); }
+window.addEventListener('hashchange', render);
+
+function render(){
+  updateUIAfterLogin();
+  const h = window.location.hash || '#home';
+  switch(h){
+    case '#home': renderHome(); break;
+    case '#login': renderLogin(); break;
+    case '#dashboard': renderDashboard(); break;
+    case '#patients': renderPatients(); break;
+    case '#appointments': renderAppointments(); break;
+    case '#doctors': renderDoctors(); break;
+    case '#reports': renderReports(); break;
+    case '#chat': renderChat(); break;
+    case '#face': renderFace(); break;
+    case '#panic': renderPanic(); break;
+    default: renderHome(); break;
+  }
+}
+
+/* ------------------- Pages ------------------- */
+function renderHome(){
+  view.innerHTML = `
+    <div class="card">
+      <h2>Welcome to CityCare Hospital</h2>
+      <p class="muted">A demo hospital system — local mock data, face login, and panic map integrated.</p>
+      <div style="margin-top:12px">
+        ${ isAuthenticated() ? `<a class="btn" href="#dashboard">Go to Dashboard</a>` : `<a class="btn" href="#login">Login</a>`}
+      </div>
+    </div>
+    <div class="grid">
+      <div class="dash-card"><h3>Patients</h3><p>${db.patients.length}</p></div>
+      <div class="dash-card"><h3>Doctors</h3><p>${db.doctors.length}</p></div>
+      <div class="dash-card"><h3>Appointments</h3><p>${db.appointments.length}</p></div>
+      <div class="dash-card"><h3>Reports</h3><p>${db.reports.length}</p></div>
+    </div>
+  `;
+}
+
+function renderLogin(){
+  if(isAuthenticated()) return navigate('#dashboard');
+  view.innerHTML = `
+    <div class="card">
+      <h2>Login</h2>
+      <form id="loginForm" class="card" style="padding:12px">
+        <label class="small-muted">Email</label>
+        <input id="email" type="email" placeholder="email" required />
+        <label class="small-muted">Password</label>
+        <input id="password" type="password" placeholder="password" required />
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button class="btn" type="submit">Login</button>
+          <button id="faceLoginBtn" type="button" class="btn" style="background:#16a34a">Face Login</button>
+        </div>
+      </form>
+      <p class="muted" style="margin-top:8px">Demo users: doctor@test / 1234 (doctor) · patient@test / 1234 (patient)</p>
+    </div>
+
+    <div class="card">
+      <h3>Or quick login as</h3>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="quickDoctor">Login as Doctor</button>
+        <button class="btn" id="quickPatient">Login as Patient</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Face login preview</h3>
+      <div class="viewer"><video id="previewVideo" autoplay playsinline class="video"></video><canvas id="previewCanvas"></canvas></div>
+      <p class="small-muted">Use Face Login to auto-login the first doctor (demo only)</p>
+    </div>
+  `;
+
+  // handlers
+  document.getElementById('loginForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    const em = document.getElementById('email').value.trim();
+    const pw = document.getElementById('password').value.trim();
+    if(loginUser(em,pw)){ render(); navigate('#dashboard'); }
+    else alert('Invalid credentials');
+  });
+  document.getElementById('quickDoctor').addEventListener('click', ()=>{
+    const d = users.find(u=>u.role==='doctor');
+    if(d){ localStorage.setItem('cc_login', JSON.stringify(d)); updateUIAfterLogin(); navigate('#dashboard'); }
+  });
+  document.getElementById('quickPatient').addEventListener('click', ()=>{
+    const p = users.find(u=>u.role==='patient');
+    if(p){ localStorage.setItem('cc_login', JSON.stringify(p)); updateUIAfterLogin(); navigate('#dashboard'); }
+  });
+
+  // Face preview
+  const previewVideo = document.getElementById('previewVideo');
+  const previewCanvas = document.getElementById('previewCanvas');
+  const pctx = previewCanvas.getContext('2d');
+  navigator.mediaDevices.getUserMedia({video:true}).then(stream=>{
+    previewVideo.srcObject = stream;
+    blazeface.load().then(model=>{
+      async function detect(){
+        if(previewVideo.videoWidth === 0){ requestAnimationFrame(detect); return; }
+        previewCanvas.width = previewVideo.videoWidth;
+        previewCanvas.height = previewVideo.videoHeight;
+        const preds = await model.estimateFaces(previewVideo, false);
+        pctx.clearRect(0,0,previewCanvas.width, previewCanvas.height);
+        preds.forEach(p=>{
+          const [x,y] = p.topLeft; const [bx,by] = p.bottomRight;
+          const w = bx - x, h = by - y;
+          pctx.strokeStyle = 'lime'; pctx.lineWidth = 2; pctx.strokeRect(x,y,w,h);
+        });
+        requestAnimationFrame(detect);
+      }
+      detect();
+    }).catch(()=>{ /* ignore model load error */ });
+  }).catch(()=>{/* ignore camera denied */});
+
+  // Face login via button: detect then auto-login first doctor
+  document.getElementById('faceLoginBtn').addEventListener('click', async ()=>{
+    try{
+      const v = document.getElementById('previewVideo');
+      const c = document.getElementById('previewCanvas');
+      const ctx = c.getContext('2d');
+      const stream = await navigator.mediaDevices.getUserMedia({video:true});
+      v.srcObject = stream;
+      const model = await blazeface.load();
+      async function detectAndLogin(){
+        if(v.videoWidth === 0){ requestAnimationFrame(detectAndLogin); return; }
+        c.width = v.videoWidth; c.height = v.videoHeight;
+        const preds = await model.estimateFaces(v,false);
+        ctx.clearRect(0,0,c.width,c.height);
+        if(preds.length>0){
+          const d = users.find(u=>u.role==='doctor');
+          if(d){ localStorage.setItem('cc_login', JSON.stringify(d)); updateUIAfterLogin(); alert('Face detected — logged in as ' + d.name); navigate('#dashboard'); stream.getTracks().forEach(t=>t.stop()); return; }
+        }
+        requestAnimationFrame(detectAndLogin);
+      }
+      detectAndLogin();
+    }catch(err){
+      alert('Face login failed: ' + err.message);
+    }
+  });
+}
+
+/* ---------- Dashboard ---------- */
+function renderDashboard(){
+  if(!isAuthenticated()) return navigate('#login');
+  const u = getCurrentUser();
+  const stats = {
+    patients: db.patients.length,
+    doctors: db.doctors.length,
+    appointments: db.appointments.length,
+    reports: db.reports.length,
+    critical: db.reports.filter(r=>r.severity==='High').length
+  };
+  const severityCounts = {
+    High: db.reports.filter(r=>r.severity==='High').length,
+    Medium: db.reports.filter(r=>r.severity==='Medium').length,
+    Low: db.reports.filter(r=>r.severity==='Low').length
+  };
+
+  view.innerHTML = `
+    <div class="card">
+      <h2>Dashboard</h2>
+      <p>Welcome, ${u.name} — role: ${u.role}</p>
+      <div style="margin-top:10px"><button class="btn" onclick="logout()">Logout</button></div>
+    </div>
+
+    <div class="grid">
+      <div class="dash-card"><h3>Total Patients</h3><p>${stats.patients}</p></div>
+      <div class="dash-card"><h3>Doctors</h3><p>${stats.doctors}</p></div>
+      <div class="dash-card"><h3>Appointments</h3><p>${stats.appointments}</p></div>
+      <div class="dash-card"><h3>Reports</h3><p>${stats.reports}</p></div>
+    </div>
+
+    <div class="grid-3" style="margin-top:14px">
+      <div class="card"><h4>Severity</h4><canvas id="chartSeverity"></canvas></div>
+      <div class="card"><h4>Appointments Timeline</h4><canvas id="chartAppt"></canvas></div>
+      <div class="card"><h4>Recent Reports</h4><ul id="recentReports">${db.reports.slice(-5).map(r=>{
+        const p = db.patients.find(pp=>pp.id===r.patientId) || {name:'Unknown'}; return `<li>${p.name} — ${r.diagnosis} (${r.severity})</li>`;
+      }).join('')}</ul></div>
+    </div>
+  `;
+
+  new Chart(document.getElementById('chartSeverity'), {
+    type: 'pie',
+    data: { labels: Object.keys(severityCounts), datasets: [{ data: Object.values(severityCounts), backgroundColor:['#ef4444','#f59e0b','#10b981'] }] },
+  });
+
+  const apptsByMonth = {};
+  db.appointments.forEach(a=>{
+    const m = (new Date(a.date)).toLocaleString('default',{month:'short',year:'numeric'});
+    apptsByMonth[m] = (apptsByMonth[m]||0) + 1;
+  });
+  const months = Object.keys(apptsByMonth).slice(-6);
+  const counts = months.map(m=>apptsByMonth[m]||0);
+  new Chart(document.getElementById('chartAppt'), {
+    type:'bar',
+    data:{ labels: months.length ? months : ['No data'], datasets:[{ label:'Appointments', data: counts.length ? counts : [0], backgroundColor:'#0b6ef6' }] }
+  });
+}
+
+/* ---------------- Patients ---------------- */
+function renderPatients(){
+  if(!isAuthenticated()) return navigate('#login');
+  const u = getCurrentUser();
+  if(u.role !== 'doctor'){ alert('Doctors only'); return navigate('#dashboard'); }
+
+  view.innerHTML = `
+    <div class="card">
+      <h2>Patients</h2>
+      <div class="controls-row">
+        <input id="searchPatient" class="search-input" placeholder="Search patient by name..." />
+        <button id="exportPatients" class="btn">Export JSON</button>
+      </div>
+      <table class="table"><thead><tr><th>ID</th><th>Name</th><th>Age</th><th>Gender</th><th>Phone</th></tr></thead>
+      <tbody id="patientTable"></tbody></table>
+      <h3 style="margin-top:12px">Add Patient</h3>
+      <form id="addPatientForm" class="card" style="padding:12px">
+        <div class="form-row">
+          <input id="pName" placeholder="Name" required />
+          <input id="pAge" type="number" placeholder="Age" required />
+        </div>
+        <div class="form-row">
+          <select id="pGender"><option>Male</option><option>Female</option></select>
+          <input id="pPhone" placeholder="Phone" />
+        </div>
+        <div style="margin-top:8px"><button class="btn" type="submit">Add Patient</button></div>
+      </form>
+    </div>
+  `;
+
+  function loadPatients(filter=''){
+    const tb = document.getElementById('patientTable');
+    tb.innerHTML = '';
+    db.patients.filter(p => p.name.toLowerCase().includes(filter.toLowerCase())).forEach(p => {
+      tb.innerHTML += `<tr><td>${p.id}</td><td>${p.name}</td><td>${p.age}</td><td>${p.gender}</td><td>${p.phone||'-'}</td></tr>`;
+    });
+    if(db.patients.length === 0) tb.innerHTML = '<tr><td colspan="5">No patients</td></tr>';
+  }
+  loadPatients();
+  document.getElementById('searchPatient').addEventListener('input', (e)=>loadPatients(e.target.value));
+  document.getElementById('addPatientForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    const name = document.getElementById('pName').value.trim();
+    const age = Number(document.getElementById('pAge').value);
+    const gender = document.getElementById('pGender').value;
+    const phone = document.getElementById('pPhone').value.trim();
+    db.patients.push({ id: db.patients.length + 1, name, age, gender, phone });
+    loadPatients();
+    e.target.reset();
+  });
+  document.getElementById('exportPatients').addEventListener('click', ()=>{
+    const blob = new Blob([JSON.stringify(db.patients, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'patients.json'; a.click(); URL.revokeObjectURL(url);
+  });
+}
+
+/* ---------------- Doctors ---------------- */
+function renderDoctors(){
+  if(!isAuthenticated()) return navigate('#login');
+  const u = getCurrentUser();
+  if(u.role !== 'doctor'){ alert('Doctors only'); return navigate('#dashboard'); }
+
+  view.innerHTML = `
+    <div class="card">
+      <h2>Doctors</h2>
+      <table class="table"><thead><tr><th>ID</th><th>Name</th><th>Speciality</th><th>Phone</th></tr></thead>
+      <tbody id="doctorTable"></tbody></table>
+
+      <h3 style="margin-top:12px">Add Doctor</h3>
+      <form id="addDoctorForm" class="card" style="padding:12px">
+        <div class="form-row"><input id="dName" placeholder="Name" required /><input id="dSpec" placeholder="Speciality" required /></div>
+        <div style="margin-top:8px"><input id="dPhone" placeholder="Phone" /><button class="btn" type="submit">Add Doctor</button></div>
+      </form>
+    </div>
+  `;
+  function loadDoctors(){
+    const tb = document.getElementById('doctorTable');
+    tb.innerHTML = '';
+    db.doctors.forEach(d=>tb.innerHTML += `<tr><td>${d.id}</td><td>${d.name}</td><td>${d.speciality}</td><td>${d.phone||'-'}</td></tr>`);
+    if(db.doctors.length === 0) tb.innerHTML = '<tr><td colspan="4">No doctors</td></tr>';
+  }
+  loadDoctors();
+  document.getElementById('addDoctorForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    db.doctors.push({ id: db.doctors.length + 1, name: dName.value.trim(), speciality: dSpec.value.trim(), phone: dPhone.value.trim() });
+    loadDoctors(); e.target.reset();
+  });
+}
+
+/* --------------- Appointments --------------- */
+function renderAppointments(){
+  if(!isAuthenticated()) return navigate('#login');
+  const u = getCurrentUser();
+
+  view.innerHTML = `
+    <div class="card">
+      <h2>Appointments</h2>
+      <div class="controls-row" style="margin-bottom:8px">
+        <div class="small-muted">Logged in as: ${u.name}</div>
+        <div style="flex:1"></div>
+        <button class="btn" id="refreshAppts">Refresh</button>
+      </div>
+
+      <table class="table"><thead><tr><th>ID</th><th>Patient</th><th>Doctor</th><th>Date</th><th>Status</th></tr></thead>
+      <tbody id="apptTable"></tbody> </table>
+
+      <h3 style="margin-top:12px">Book Appointment</h3>
+      <form id="addApptForm" class="card" style="padding:12px">
+        <div class="form-row">
+          <select id="aPatient">${db.patients.map(p=>`<option>${p.name}</option>`).join('')}</select>
+          <select id="aDoctor">${db.doctors.map(d=>`<option>${d.name}</option>`).join('')}</select>
+        </div>
+        <div class="form-row">
+          <input id="aDate" type="date" required />
+          <select id="aStatus"><option>Pending</option><option>Confirmed</option></select>
+        </div>
+        <div style="margin-top:8px"><button class="btn" type="submit">Book</button></div>
+      </form>
+    </div>
+  `;
+
+  function loadAppointments(){
+    const tb = document.getElementById('apptTable');
+    tb.innerHTML = '';
+    const list = (u.role === 'doctor') ? db.appointments : db.appointments.filter(a => a.patient === u.name);
+    if(list.length === 0) tb.innerHTML = '<tr><td colspan="5">No appointments</td></tr>';
+    list.forEach(a => tb.innerHTML += `<tr><td>${a.id}</td><td>${a.patient}</td><td>${a.doctor}</td><td>${a.date}</td><td>${a.status}</td></tr>`);
+  }
+  loadAppointments();
+  document.getElementById('refreshAppts').addEventListener('click', loadAppointments);
+  document.getElementById('addApptForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    db.appointments.push({ id: db.appointments.length + 1, patient: aPatient.value, doctor: aDoctor.value, date: aDate.value, status: aStatus.value });
+    loadAppointments(); e.target.reset();
+  });
+}
+
+/* ---------------- Reports ---------------- */
+function renderReports(){
+  if(!isAuthenticated()) return navigate('#login');
+  const u = getCurrentUser();
+  const list = (u.role === 'doctor') ? db.reports : db.reports.filter(r => {
+    const p = db.patients.find(pp => pp.id === r.patientId);
+    return p && p.name === u.name;
+  });
+
+  view.innerHTML = `
+    <div class="card">
+      <h2>Reports</h2>
+      <table class="table"><thead><tr><th>ID</th><th>Patient</th><th>Doctor</th><th>Diagnosis</th><th>Severity</th><th>Date</th></tr></thead>
+      <tbody id="reportTable"></tbody></table>
+
+      ${ u.role === 'doctor' ? `
+      <h3 style="margin-top:12px">Add Report</h3>
+      <form id="addReportForm" class="card" style="padding:12px">
+        <div class="form-row">
+          <select id="rPatient">${db.patients.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
+          <select id="rDoctor">${db.doctors.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select>
+        </div>
+        <div class="form-row">
+          <input id="rDiag" placeholder="Diagnosis" required />
+          <select id="rSeverity"><option>Low</option><option>Medium</option><option>High</option></select>
+        </div>
+        <div style="margin-top:8px"><button class="btn" type="submit">Add Report</button></div>
+      </form>` : '' }
+    </div>
+  `;
+
+  function loadReports(){
+    const tb = document.getElementById('reportTable');
+    tb.innerHTML = '';
+    if(list.length === 0) tb.innerHTML = '<tr><td colspan="6">No reports</td></tr>';
+    list.forEach(r=>{
+      const p = db.patients.find(pp=>pp.id===r.patientId) || {name:'Unknown'};
+      const d = db.doctors.find(dd=>dd.id===r.doctorId) || {name:'Unknown'};
+      tb.innerHTML += `<tr><td>${r.id}</td><td>${p.name}</td><td>${d.name}</td><td>${r.diagnosis}</td><td>${r.severity}</td><td>${r.createdAt||'-'}</td></tr>`;
+    });
+  }
+  loadReports();
+
+  if(u.role === 'doctor'){
+    document.getElementById('addReportForm').addEventListener('submit', e=>{
+      e.preventDefault();
+      db.reports.push({
+        id: db.reports.length + 1,
+        patientId: Number(rPatient.value),
+        doctorId: Number(rDoctor.value),
+        diagnosis: rDiag.value.trim(),
+        severity: rSeverity.value,
+        createdAt: new Date().toISOString().split('T')[0]
+      });
+      loadReports();
+      e.target.reset();
+    });
+  }
+}
+
+/* ---------------- Chat (local) ---------------- */
+function renderChat(){
+  if(!isAuthenticated()) return navigate('#login');
+  const u = getCurrentUser();
+
+  view.innerHTML = `
+    <div class="card">
+      <h2>Local Chat</h2>
+      <p class="small-muted">Simple local chat for demo. Messages are not persisted across refresh.</p>
+      <div class="chat-box" id="chatBox"></div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <input id="chatInput" placeholder="Message..." style="flex:1;padding:10px;border-radius:8px;border:1px solid #ddd"/>
+        <button id="sendChat" class="btn">Send</button>
+      </div>
+    </div>
+  `;
+
+  const chatBox = document.getElementById('chatBox');
+  const chatLog = [];
+
+  function renderMessages(){
+    chatBox.innerHTML = '';
+    chatLog.forEach(m=>{
+      const cls = m.from === u.name ? 'chat-msg you' : 'chat-msg';
+      chatBox.innerHTML += `<div class="${cls}"><strong>${m.from}:</strong> <span>${m.text}</span><div class="small-muted">${m.time}</div></div>`;
+    });
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  document.getElementById('sendChat').addEventListener('click', ()=>{
+    const txt = document.getElementById('chatInput').value.trim();
+    if(!txt) return;
+    chatLog.push({from: u.name, text: txt, time: new Date().toLocaleTimeString()});
+    document.getElementById('chatInput').value = '';
+    renderMessages();
+
+    setTimeout(()=>{
+      chatLog.push({from: 'HospitalBot', text: 'Acknowledged: ' + txt, time: new Date().toLocaleTimeString()});
+      renderMessages();
+    }, 700);
+  });
+}
+
+/* --------------- Face detection --------------- */
+async function renderFace(){
+  if(!isAuthenticated()) return navigate('#login');
+  view.innerHTML = `
+    <div class="card">
+      <h2>Face Recognition (demo)</h2>
+      <div class="viewer"><video id="faceVideo" autoplay playsinline class="video"></video><canvas id="faceCanvas"></canvas></div>
+      <p class="small-muted">This demo draws boxes around detected faces (BlazeFace). Not for production authentication.</p>
+    </div>
+  `;
+  const video = document.getElementById('faceVideo');
+  const canvas = document.getElementById('faceCanvas');
+  const ctx = canvas.getContext('2d');
+
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:true});
+    video.srcObject = stream;
+    const model = await blazeface.load();
+    async function detect(){
+      if(video.videoWidth === 0){ requestAnimationFrame(detect); return; }
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      const preds = await model.estimateFaces(video, false);
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      preds.forEach(p=>{
+        const [x,y] = p.topLeft; const [bx,by] = p.bottomRight;
+        const w = bx - x, h = by - y;
+        ctx.strokeStyle = 'lime'; ctx.lineWidth = 2; ctx.strokeRect(x,y,w,h);
+      });
+      requestAnimationFrame(detect);
+    }
+    detect();
+  }catch(err){
+    alert('Face camera error: ' + err.message);
+  }
+}
+
+/* ----------------- Panic (Leaflet + Overpass) ----------------- */
+function renderPanic(){
+  if(!isAuthenticated()) return navigate('#login');
+  const u = getCurrentUser();
+
+  view.innerHTML = `
+    <div class="card" style="position:relative;">
+      <h2>Panic — Nearby Hospitals & Alerts</h2>
+      <p class="small-muted">Press the panic button to send a simulated emergency alert to on-duty doctors. Alerts are stored locally. (Demo)</p>
+      <div style="position:relative">
+        <button id="panicBtn">🚨 Panic Button 🚨</button>
+        <div id="map"></div>
+      </div>
+      <div style="margin-top:12px">
+        <h3>Recent Panic Alerts</h3>
+        <table class="table"><thead><tr><th>ID</th><th>By</th><th>Time</th><th>Lat</th><th>Lng</th><th>Notified Doctors</th><th>Photo</th></tr></thead>
+        <tbody id="panicTable"></tbody></table>
+      </div>
+    </div>
+  `;
+
+  // utility to draw panic table
+  function loadPanicTable(){
+    const tb = document.getElementById('panicTable');
+    tb.innerHTML = '';
+    (db.panics.slice().reverse()).forEach(p=>{
+      const photoCell = p.photo ? `<a href="${p.photo}" target="_blank">View</a>` : '-';
+      tb.innerHTML += `<tr><td>${p.id}</td><td>${p.by}</td><td>${p.time}</td><td>${p.lat.toFixed(4)}</td><td>${p.lng.toFixed(4)}</td><td>${p.notified.join(', ')}</td><td>${photoCell}</td></tr>`;
+    });
+    if(db.panics.length===0) tb.innerHTML='<tr><td colspan="7">No panic alerts yet</td></tr>';
+  }
+
+  // initialize map
+  const mapEl = document.getElementById('map');
+  mapEl.innerHTML = '';
+  const map = L.map('map').setView([20.5937,78.9629], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
+
+  // Overpass query (nodes + ways + relations) -> out center
+  async function getNearbyHospitals(lat,lng,radius=5000){
+    const query = `
+      [out:json][timeout:25];
+      (
+        node["amenity"="hospital"](around:${radius},${lat},${lng});
+        way["amenity"="hospital"](around:${radius},${lat},${lng});
+        relation["amenity"="hospital"](around:${radius},${lat},${lng});
+      );
+      out center;
+    `;
+    try{
+      const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
+      const data = await res.json();
+      if(!data.elements) return;
+      data.elements.forEach(el=>{
+        const latE = el.lat || (el.center && el.center.lat);
+        const lonE = el.lon || (el.center && el.center.lon);
+        if(latE && lonE){
+          const name = (el.tags && (el.tags.name || el.tags['name:en'])) || 'Hospital';
+          L.marker([latE, lonE]).addTo(map).bindPopup(`<strong>${name}</strong>`);
+        }
+      });
+    }catch(err){
+      console.error('Overpass error', err);
+    }
+  }
+
+  // attempt to get location and bind panic action
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
+      L.marker([lat,lng]).addTo(map).bindPopup('You are here').openPopup();
+      map.setView([lat,lng], 13);
+      // load hospitals
+      getNearbyHospitals(lat,lng,5000);
+      // bind panic button with photo capture
+      document.getElementById('panicBtn').addEventListener('click', ()=>panicWithPhoto(lat,lng));
+    }, err=>{
+      alert('Location denied or failed. Panic will use default coords (center of country).');
+      document.getElementById('panicBtn').addEventListener('click', ()=>panicWithPhoto(20.5937,78.9629));
+    }, {enableHighAccuracy:true});
+  } else {
+    document.getElementById('panicBtn').addEventListener('click', ()=>panicWithPhoto(20.5937,78.9629));
+  }
+
+  // capture camera snapshot (optional) — returns dataURL or null
+  async function capturePhoto(){
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({video:true});
+      const v = document.createElement('video');
+      v.srcObject = stream;
+      await v.play();
+      const canvas = document.createElement('canvas');
+      canvas.width = v.videoWidth || 640;
+      canvas.height = v.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      stream.getTracks().forEach(t=>t.stop());
+      return dataUrl;
+    }catch(err){
+      // user denied camera or no camera - return null
+      return null;
+    }
+  }
+
+  // main panic handler: capture photo, store alert, notify (simulated), mark on map
+  async function panicWithPhoto(lat,lng){
+    if(!confirm('Send panic alert? This will simulate notifying on-duty doctors.')) return;
+    // try capture photo — if denied, continue without it
+    const photo = await capturePhoto();
+    const now = new Date();
+    const rec = {
+      id: db.panics.length + 1,
+      by: getCurrentUser().name,
+      time: now.toLocaleString(),
+      lat, lng,
+      notified: db.doctors.map(d => d.name),
+      photo // may be null
+    };
+    db.panics.push(rec);
+    loadPanicTable();
+    map.flyTo([lat,lng], 15);
+    L.circle([lat,lng], { radius: 100, color: 'red', fillOpacity: 0.18 }).addTo(map);
+    L.marker([lat,lng], {icon: L.icon({iconUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', iconSize:[25,41]})})
+      .addTo(map).bindPopup(`<strong>Panic: ${rec.by}</strong><br/>${rec.time}`).openPopup();
+    alert(`Panic sent! Simulated alert stored (notified: ${rec.notified.join(', ')})`);
+  }
+
+  loadPanicTable();
+}
+
+/* ------------------- Init ------------------- */
+updateUIAfterLogin();
+render(); // initial
+
+// sidebar anchors navigation override
+document.querySelectorAll('.sidebar a').forEach(a=>{
+  a.addEventListener('click', e=>{
+    const href = a.getAttribute('href');
+    if(href && href.startsWith('#')){ e.preventDefault(); navigate(href); }
+  });
+});
+</script>
+</body>
+</html>
